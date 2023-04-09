@@ -1,0 +1,118 @@
+---
+title: "MATH5855 --- Cluster analysis"
+author:
+- "Atefeh Zamani"
+- "Based on the notes provided by Pavel Krivitsky"
+- "Deparment of Statistics"
+- "University of New South Wales"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+
+
+# Packages
+
+```{r, message=FALSE}
+library(here)
+library(GGally)
+# stats is loaded by default
+library(readr)
+library(dplyr)
+library(candisc)# Canonical discriminant analysis is a dimension-reduction technique related to principal component analysis and canonical correlation.
+library(cluster)
+library(mclust)# Gaussian finite mixture models 
+```
+
+
+# Challenges
+
+Recall the dataset `pizza.csv`, containing nutritional data from a variety of pizza brands:
+
+`brand`
+: Pizza brand (class label)
+
+`id`
+: Sample analysed
+
+`prot`
+: Amount of protein per 100 grams in the sample
+
+`fat`
+: Amount of fat per 100 grams in the sample
+
+`ash`
+: Amount of ash per 100 grams in the sample
+
+`sodium`
+: Amount of sodium per 100 grams in the sample
+
+`carb`
+: Amount of carbohydrates per 100 grams in the sample
+
+`cal`
+: Amount of calories per 100 grams in the sample
+
+```{r}
+pizza <- read_csv("pizza.csv")
+ggpairs(pizza, mapping=aes(col=brand, alpha=0.3))
+```
+Suppose that we have lost track of which pizza came from which brand, i.e., 
+```{r}
+pizza0 <- select(pizza, -brand)
+```
+
+### Task 1: Supposing that we know that there are 10 brands, try using the various clustering methods to group the pizzas by brand. How well can you recover them?
+
+#### Solution:
+Let's try MBC first:
+```{r}
+(pizza.MBC10<- Mclust(pizza0, G=10)) #Gaussian Mixture Modelling
+# Confusion matrix
+table(brand=pizza$brand, cluster=pizza.MBC10$classification)
+# Plot
+pairs(pizza0, col=pizza.MBC10$classification, pch=as.numeric(as.factor(pizza$brand))) # the used symbol indicates the true class
+```
+We see that the algorithm selects the VVE model, assuming varying cluster volumes and shapes but same orientation, and it does a very good job of recovering brands A, B, C, D, I, and J, but with some confusion among the other brands: particularly F vs. G and E vs. H.
+
+```{r}
+pizza.k<- kmeans(pizza0,centers=10)
+table(species=pizza$brand, cluster=pizza.k$cluster)
+```
+
+
+In light of this, $k$-means, which effectively assumes spherical Gaussian clusters, probably won't work well, but let's try hierarchical clustering and PAM:
+```{r}
+pizza.h <- hclust(dist(pizza0), method="ward.D2") #	dist(pizza0): a dissimilarity structure as produced by dist (distance)
+(pizza.h10 <- cutree(pizza.h,10)) # is based on the tree and you should specify the desired number(s) of groups or the cut height(s) (10 clusters)
+table(species=pizza$brand, cluster=pizza.h10)
+pairs(pizza0, col=pizza.h10, pch=as.numeric(as.factor(pizza$brand)))
+```
+```{r}
+pizza.10meds <- pam(pizza0,10) #Partitioning Around Medoids
+table(brand=pizza$brand, cluster=pizza.10meds$cluster)
+pairs(pizza0, col=pizza.10meds$cluster, pch=as.numeric(as.factor(pizza$brand)))
+```
+The results are overall quite similar.
+
+### Task 2: Now, suppose that we don't know how many brands there were. How many would you infer from the unlabelled data?
+
+#### Solution:
+Let's try MBC first, not constraining the cluster count:
+```{r}
+(pizza.MBC<- Mclust(pizza0))
+```
+MBC detects 9 clusters, which is close to the truth.
+
+
+Also, the silhouette method for hierarchical and PAM:
+```{r}
+pizza.h <- agnes(pizza0, method="ward") # Computes agglomerative hierarchical clustering of the dataset. More flexible; see help.
+# Which cluster number gives the best average silhouette width?
+d <- dist(pizza0)
+plot(2:20,sapply(2:20, function(k) summary(silhouette(cutree(pizza.h,k),d))$avg.width))
+```
+```{r}
+plot(2:20,sapply(2:20, function(k) summary(silhouette(pam(pizza0,k)$cluster,d))$avg.width))
+```
+The silhouette method picks 5 in both cases, though PAM has a local maximum at 11 as well.
